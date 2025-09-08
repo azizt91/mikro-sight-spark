@@ -36,9 +36,17 @@ const Dashboard = () => {
   const fetchNetworkData = async () => {
     setIsRefreshing(true);
     
-    // Simulate API call to Node.js backend
+    // Get MikroTik credentials from localStorage
+    const credentials = localStorage.getItem("mikrotikCredentials");
+    
+    // Simulate API call to Node.js backend with MikroTik credentials
     setTimeout(() => {
-      // In real app: const response = await fetch('/api/netwatch');
+      // In real app: 
+      // const response = await fetch('/api/netwatch', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: credentials
+      // });
       setNetwatchData(mockData);
       setLastUpdate(new Date());
       setIsRefreshing(false);
@@ -53,6 +61,9 @@ const Dashboard = () => {
       return;
     }
 
+    // Get MikroTik credentials to display connection info
+    const credentialsData = localStorage.getItem("mikrotikCredentials");
+    
     // Initial data fetch
     fetchNetworkData();
 
@@ -63,9 +74,10 @@ const Dashboard = () => {
 
   const handleLogout = () => {
     localStorage.removeItem("isAuthenticated");
+    localStorage.removeItem("mikrotikCredentials");
     toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out",
+      title: "Disconnected",
+      description: "Disconnected from MikroTik router",
     });
     navigate("/");
   };
@@ -77,6 +89,9 @@ const Dashboard = () => {
 
   const onlineCount = netwatchData.filter(entry => entry.status === "up").length;
   const offlineCount = netwatchData.filter(entry => entry.status === "down").length;
+
+  // Get connection info
+  const mikrotikCredentials = JSON.parse(localStorage.getItem("mikrotikCredentials") || '{"host":"Unknown"}');
 
   return (
     <div className="min-h-screen p-4 md:p-6 space-y-6">
@@ -91,7 +106,7 @@ const Dashboard = () => {
               MikroTik Monitor
             </h1>
             <p className="text-muted-foreground text-sm">
-              Last updated: {lastUpdate.toLocaleTimeString()}
+              Connected to: <span className="font-mono text-primary">{mikrotikCredentials.host}</span> • Last updated: {lastUpdate.toLocaleTimeString()}
             </p>
           </div>
         </div>

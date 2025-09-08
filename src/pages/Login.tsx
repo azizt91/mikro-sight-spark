@@ -8,7 +8,8 @@ import { Shield, Network } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const Login = () => {
-  const [username, setUsername] = useState("");
+  const [host, setHost] = useState("192.168.1.1");
+  const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
@@ -18,24 +19,29 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate authentication - in real app, this would call your backend
+    // Simulate MikroTik connection - in real app, this would call your Node.js backend
+    // Backend will attempt to connect to MikroTik with these credentials
     setTimeout(() => {
-      if (username && password) {
+      if (host && username && password) {
+        // Store MikroTik credentials for API calls
+        const credentials = { host, username, password };
+        localStorage.setItem("mikrotikCredentials", JSON.stringify(credentials));
         localStorage.setItem("isAuthenticated", "true");
+        
         toast({
-          title: "Login Successful",
-          description: "Welcome to MikroTik Monitoring Dashboard",
+          title: "MikroTik Connected",
+          description: `Successfully connected to ${host}`,
         });
         navigate("/dashboard");
       } else {
         toast({
-          title: "Login Failed",
-          description: "Please enter both username and password",
+          title: "Connection Failed",
+          description: "Please fill in all MikroTik connection details",
           variant: "destructive",
         });
       }
       setIsLoading(false);
-    }, 1000);
+    }, 1500);
   };
 
   return (
@@ -57,19 +63,30 @@ const Login = () => {
         {/* Login Card */}
         <Card className="card-monitoring">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl text-center">Sign In</CardTitle>
+            <CardTitle className="text-2xl text-center">Connect to MikroTik</CardTitle>
             <CardDescription className="text-center">
-              Enter your credentials to access the monitoring dashboard
+              Enter your MikroTik router credentials to access netwatch monitoring
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="host">MikroTik Host/IP</Label>
+                <Input
+                  id="host"
+                  type="text"
+                  placeholder="192.168.1.1"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  className="bg-input border-border font-mono"
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>
                 <Input
                   id="username"
                   type="text"
-                  placeholder="Enter your username"
+                  placeholder="admin"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="bg-input border-border"
@@ -80,7 +97,7 @@ const Login = () => {
                 <Input
                   id="password"
                   type="password"
-                  placeholder="Enter your password"
+                  placeholder="Enter MikroTik password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="bg-input border-border"
@@ -94,12 +111,12 @@ const Login = () => {
                 {isLoading ? (
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                    Signing In...
+                    Connecting to MikroTik...
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4" />
-                    Sign In
+                    <Network className="w-4 h-4" />
+                    Connect & Monitor
                   </div>
                 )}
               </Button>
@@ -107,9 +124,10 @@ const Login = () => {
           </CardContent>
         </Card>
 
-        {/* Demo Notice */}
-        <div className="text-center text-sm text-muted-foreground">
-          <p>Demo Mode - Use any credentials to continue</p>
+        {/* Connection Info */}
+        <div className="text-center text-sm text-muted-foreground space-y-1">
+          <p>Enter your MikroTik router connection details</p>
+          <p className="text-xs">Credentials will be sent to your Node.js backend for RouterOS API connection</p>
         </div>
       </div>
     </div>
