@@ -2,41 +2,69 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* MikroTik Monitoring Dashboard Design System */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Main theme colors - Dark professional monitoring theme */
+    --background: 222 15% 8%;
+    --foreground: 210 40% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* Card system - Professional dashboard cards */
+    --card: 222 15% 12%;
+    --card-foreground: 210 40% 98%;
+    --card-border: 222 15% 18%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    /* Navigation and popover */
+    --popover: 222 15% 10%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 222.2 47.4% 11.2%;
+    /* Primary - Monitoring blue */
+    --primary: 217 91% 60%;
     --primary-foreground: 210 40% 98%;
+    --primary-glow: 217 91% 70%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Secondary - Subtle backgrounds */
+    --secondary: 222 15% 15%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Muted elements */
+    --muted: 222 15% 15%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Accent - Interactive elements */
+    --accent: 222 15% 18%;
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 84.2% 60.2%;
+    /* Status colors */
+    --success: 142 72% 50%;
+    --success-foreground: 210 40% 98%;
+    --success-glow: 142 72% 60%;
+
+    --destructive: 0 72% 60%;
     --destructive-foreground: 210 40% 98%;
+    --destructive-glow: 0 72% 70%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --warning: 45 93% 58%;
+    --warning-foreground: 210 40% 98%;
 
-    --radius: 0.5rem;
+    /* Interactive elements */
+    --border: 222 15% 18%;
+    --input: 222 15% 15%;
+    --ring: 217 91% 60%;
+
+    /* Gradients for modern effects */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
+    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(var(--success-glow)));
+    --gradient-destructive: linear-gradient(135deg, hsl(var(--destructive)), hsl(var(--destructive-glow)));
+    --gradient-background: linear-gradient(180deg, hsl(var(--background)), hsl(222 15% 6%));
+    
+    /* Shadows for depth */
+    --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+    --shadow-status: 0 0 20px rgba(var(--success-glow), 0.5);
+    --shadow-offline: 0 0 20px rgba(var(--destructive-glow), 0.5);
+
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
 
@@ -101,5 +129,57 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    background: linear-gradient(180deg, hsl(var(--background)), hsl(222 15% 6%));
+    min-height: 100vh;
+  }
+}
+
+/* Custom animations for monitoring dashboard */
+@keyframes pulse-online {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 hsl(var(--success) / 0.7);
+    background-color: hsl(var(--success));
+  }
+  50% { 
+    box-shadow: 0 0 0 8px hsl(var(--success) / 0);
+    background-color: hsl(var(--success-glow));
+  }
+}
+
+@keyframes pulse-offline {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 hsl(var(--destructive) / 0.7);
+    background-color: hsl(var(--destructive));
+  }
+  50% { 
+    box-shadow: 0 0 0 8px hsl(var(--destructive) / 0);
+    background-color: hsl(var(--destructive-glow));
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Utility classes for monitoring components */
+@layer components {
+  .status-dot-online {
+    @apply w-3 h-3 rounded-full;
+    animation: pulse-online 2s infinite;
+  }
+  
+  .status-dot-offline {
+    @apply w-3 h-3 rounded-full;
+    animation: pulse-offline 2s infinite;
+  }
+  
+  .card-monitoring {
+    @apply bg-card border border-card-border rounded-lg;
+    box-shadow: var(--shadow-card);
+  }
+  
+  .fade-in {
+    animation: fadeIn 0.5s ease-out;
   }
 }
