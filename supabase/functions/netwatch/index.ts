@@ -34,73 +34,61 @@ class RouterOSAPI {
 
   async connect(): Promise<NetwatchEntry[]> {
     try {
-      // For demo purposes, we'll simulate the RouterOS API connection
-      // In a real implementation, you would use a proper RouterOS API library
-      // or implement the full RouterOS API protocol
-      
-      // Simulate connection delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Return simulated netwatch data based on the host
-      // In real implementation, this would come from actual RouterOS API
-      const mockNetworkData: NetwatchEntry[] = [
-        { 
-          id: "1", 
-          name: "Gateway Router", 
-          host: "192.168.1.1", 
-          status: Math.random() > 0.3 ? "up" : "down", 
-          since: new Date(Date.now() - Math.random() * 86400000).toISOString().slice(0, 16).replace('T', ' ')
-        },
-        { 
-          id: "2", 
-          name: "Core Switch", 
-          host: "192.168.1.10", 
-          status: Math.random() > 0.2 ? "up" : "down", 
-          since: new Date(Date.now() - Math.random() * 86400000).toISOString().slice(0, 16).replace('T', ' ')
-        },
-        { 
-          id: "3", 
-          name: "WiFi Access Point", 
-          host: "192.168.1.20", 
-          status: Math.random() > 0.4 ? "up" : "down", 
-          since: new Date(Date.now() - Math.random() * 86400000).toISOString().slice(0, 16).replace('T', ' ')
-        },
-        { 
-          id: "4", 
-          name: "Server Rack", 
-          host: "192.168.1.100", 
-          status: Math.random() > 0.1 ? "up" : "down", 
-          since: new Date(Date.now() - Math.random() * 86400000).toISOString().slice(0, 16).replace('T', ' ')
-        },
-        { 
-          id: "5", 
-          name: "Backup Router", 
-          host: "192.168.1.2", 
-          status: Math.random() > 0.2 ? "up" : "down", 
-          since: new Date(Date.now() - Math.random() * 86400000).toISOString().slice(0, 16).replace('T', ' ')
-        },
-        { 
-          id: "6", 
-          name: "Edge Firewall", 
-          host: "192.168.1.254", 
-          status: Math.random() > 0.3 ? "up" : "down", 
-          since: new Date(Date.now() - Math.random() * 86400000).toISOString().slice(0, 16).replace('T', ' ')
-        },
-      ];
-
-      // Validate credentials (basic simulation)
       if (!this.host || !this.username || !this.password) {
         throw new Error('Invalid credentials');
       }
 
-      // Simulate authentication failure for certain credentials
-      if (this.username === 'invalid' || this.password === 'invalid') {
-        throw new Error('Authentication failed');
+      // Build possible REST endpoints. We try HTTPS first, then HTTP.
+      const endpoints: string[] = [];
+      const cleanHost = this.host.replace(/\/$/, '');
+      if (cleanHost.startsWith('http://') || cleanHost.startsWith('https://')) {
+        endpoints.push(`${cleanHost}/rest/tool/netwatch`);
+      } else {
+        endpoints.push(`https://${cleanHost}/rest/tool/netwatch`);
+        endpoints.push(`http://${cleanHost}/rest/tool/netwatch`);
       }
 
-      return mockNetworkData;
+      const authHeader = `Basic ${btoa(`${this.username}:${this.password}`)}`;
+
+      let lastError: unknown = null;
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': authHeader,
+              'Accept': 'application/json',
+            },
+          });
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`HTTP ${res.status} from ${url}: ${text?.slice(0, 200)}`);
+          }
+
+          const raw = await res.json();
+          const items = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
+
+          const mapped: NetwatchEntry[] = items
+            .map((item: any, idx: number) => ({
+              id: item['.id'] || item.id || String(idx + 1),
+              name: item.comment || item.name || item.host || `Device ${idx + 1}`,
+              host: item.host || item.address || '',
+              status: (item.status === 'up' || item.status === true) ? 'up' : 'down',
+              since: item.since || item['since-time'] || new Date().toISOString().slice(0, 16).replace('T', ' '),
+            }))
+            .filter((d: NetwatchEntry) => !!d.host);
+
+          return mapped;
+        } catch (err) {
+          lastError = err;
+          // Try the next protocol/endpoint
+        }
+      }
+
+      throw new Error(`RouterOS REST API request failed: ${(lastError as Error)?.message || lastError}`);
     } catch (error) {
-      throw new Error(`RouterOS connection failed: ${error.message}`);
+      throw new Error(`RouterOS connection failed: ${(error as Error).message}`);
     }
   }
 }
