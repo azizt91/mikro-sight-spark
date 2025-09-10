@@ -1,147 +1,199 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// supabase/functions/netwatch/index.ts
 
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { Buffer } from 'https://deno.land/std@0.168.0/io/buffer.ts';
+
+// Header CORS untuk mengizinkan frontend Anda mengakses fungsi ini
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
-interface MikroTikCredentials {
-  host: string;
-  username: string;
-  password: string;
-}
-
-interface NetwatchEntry {
-  id: string;
-  name: string;
-  host: string;
-  status: "up" | "down";
-  since: string;
-}
-
-// Simple RouterOS API implementation for Deno
+// Helper class untuk menangani komunikasi RouterOS API
 class RouterOSAPI {
-  private host: string;
-  private username: string;
-  private password: string;
+  private conn: Deno.Conn | null = null;
+  private debug = false;
 
-  constructor(host: string, username: string, password: string) {
-    this.host = host;
-    this.username = username;
-    this.password = password;
+  private log(message: string) {
+    if (this.debug) {
+      console.log(message);
+    }
   }
 
-  async connect(): Promise<NetwatchEntry[]> {
-    try {
-      if (!this.host || !this.username || !this.password) {
-        throw new Error('Invalid credentials');
-      }
+  // Fungsi untuk mengenkode panjang kata/perintah sesuai protokol API
+  private encodeLength(length: number): Uint8Array {
+    if (length < 0x80) {
+      return new Uint8Array([length]);
+    }
+    if (length < 0x4000) {
+      return new Uint8Array([(length >> 8) | 0x80, length & 0xff]);
+    }
+    if (length < 0x200000) {
+      return new Uint8Array([(length >> 16) | 0xc0, (length >> 8) & 0xff, length & 0xff]);
+    }
+    if (length < 0x10000000) {
+      return new Uint8Array([(length >> 24) | 0xe0, (length >> 16) & 0xff, (length >> 8) & 0xff, length & 0xff]);
+    }
+    return new Uint8Array([0xf0, (length >> 24) & 0xff, (length >> 16) & 0xff, (length >> 8) & 0xff, length & 0xff]);
+  }
 
-      // Build possible REST endpoints. We try HTTPS first, then HTTP.
-      const endpoints: string[] = [];
-      const cleanHost = this.host.replace(/\/$/, '');
-      if (cleanHost.startsWith('http://') || cleanHost.startsWith('https://')) {
-        endpoints.push(`${cleanHost}/rest/tool/netwatch`);
-      } else {
-        endpoints.push(`https://${cleanHost}/rest/tool/netwatch`);
-        endpoints.push(`http://${cleanHost}/rest/tool/netwatch`);
-      }
+  // Fungsi untuk menulis data ke socket
+  private async writeWord(word: string): Promise<void> {
+    if (!this.conn) throw new Error("Not connected");
+    const encodedWord = new TextEncoder().encode(word);
+    const encodedLength = this.encodeLength(encodedWord.length);
+    await this.conn.write(encodedLength);
+    await this.conn.write(encodedWord);
+    this.log(`>>> ${word}`);
+  }
 
-      const authHeader = `Basic ${btoa(`${this.username}:${this.password}`)}`;
-
-      let lastError: unknown = null;
-      for (const url of endpoints) {
-        try {
-          const res = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Authorization': authHeader,
-              'Accept': 'application/json',
-            },
-          });
-
-          if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`HTTP ${res.status} from ${url}: ${text?.slice(0, 200)}`);
+  // Fungsi untuk membaca respons dari socket
+  private async readSentence(): Promise<string[]> {
+      if (!this.conn) throw new Error("Not connected");
+      const sentence = [];
+      while (true) {
+          const firstByte = new Uint8Array(1);
+          await this.conn.read(firstByte);
+          let length: number;
+          // Logika untuk mendekode panjang kata dari respons
+          if ((firstByte[0] & 0x80) === 0x00) {
+              length = firstByte[0];
+          } else if ((firstByte[0] & 0xC0) === 0x80) {
+              const secondByte = new Uint8Array(1);
+              await this.conn.read(secondByte);
+              length = ((firstByte[0] & 0x3F) << 8) + secondByte[0];
+          } else if ((firstByte[0] & 0xE0) === 0xC0) {
+              const nextBytes = new Uint8Array(2);
+              await this.conn.read(nextBytes);
+              length = ((firstByte[0] & 0x1F) << 16) + (nextBytes[0] << 8) + nextBytes[1];
+          } else if ((firstByte[0] & 0xF0) === 0xE0) {
+              const nextBytes = new Uint8Array(3);
+              await this.conn.read(nextBytes);
+              length = ((firstByte[0] & 0x0F) << 24) + (nextBytes[0] << 16) + (nextBytes[1] << 8) + nextBytes[2];
+          } else { // Asumsi 5 byte length
+              const nextBytes = new Uint8Array(4);
+              await this.conn.read(nextBytes);
+              length = (nextBytes[0] << 24) + (nextBytes[1] << 16) + (nextBytes[2] << 8) + nextBytes[3];
           }
 
-          const raw = await res.json();
-          const items = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
+          const wordBuffer = new Buffer();
+          if (length > 0) {
+            const tempBuffer = new Uint8Array(length);
+            await this.conn.read(tempBuffer);
+            wordBuffer.write(tempBuffer);
+          }
 
-          const mapped: NetwatchEntry[] = items
-            .map((item: any, idx: number) => ({
-              id: item['.id'] || item.id || String(idx + 1),
-              name: item.comment || item.name || item.host || `Device ${idx + 1}`,
-              host: item.host || item.address || '',
-              status: (item.status === 'up' || item.status === true) ? 'up' : 'down',
-              since: item.since || item['since-time'] || new Date().toISOString().slice(0, 16).replace('T', ' '),
-            }))
-            .filter((d: NetwatchEntry) => !!d.host);
+          const word = new TextDecoder().decode(wordBuffer.bytes());
+          this.log(`<<< ${word}`);
+          sentence.push(word);
+          if (word === '!done' || word === '!fatal' || word.endsWith('\x00')) {
+              break;
+          }
+      }
+      return sentence;
+  }
+  
+  // Fungsi utama untuk koneksi dan login
+  public async connect(host: string, user: string, pass: string): Promise<boolean> {
+    try {
+      this.conn = await Deno.connect({ hostname: host, port: 8728 }); // Port default RouterOS API
+      
+      // Proses login (tanpa challenge-response untuk simplisitas awal)
+      await this.writeWord('/login');
+      await this.writeWord(`=name=${user}`);
+      await this.writeWord(`=password=${pass}`);
+      await this.conn.write(new Uint8Array([0])); // Akhiri kalimat
 
-          return mapped;
-        } catch (err) {
-          lastError = err;
-          // Try the next protocol/endpoint
+      const response = await this.readSentence();
+      if (response.includes("!done")) {
+        this.log("Login successful");
+        return true;
+      }
+      // Tambahan: Handle login challenge jika diperlukan (lebih kompleks)
+      
+      this.log("Login failed");
+      this.disconnect();
+      return false;
+    } catch (error) {
+      this.log(`Connection error: ${error.message}`);
+      return false;
+    }
+  }
+
+  // Fungsi untuk menjalankan perintah
+  public async comm(command: string): Promise<any[]> {
+    if (!this.conn) throw new Error("Not connected");
+    await this.writeWord(command);
+    await this.conn.write(new Uint8Array([0])); // Akhiri kalimat
+    
+    const response = await this.readSentence();
+    
+    // Parsing sederhana dari respons ke format JSON
+    const result = [];
+    let currentObject = {};
+    for (const word of response) {
+      if (word === '!re') {
+        if (Object.keys(currentObject).length > 0) {
+          result.push(currentObject);
+        }
+        currentObject = {};
+      } else if (word.startsWith('=')) {
+        const [, key, value] = word.match(/^=([^=]+)=(.*)$/) || [];
+        if (key) {
+          currentObject[key] = value;
         }
       }
+    }
+    if (Object.keys(currentObject).length > 0) {
+      result.push(currentObject);
+    }
+    
+    return result;
+  }
 
-      throw new Error(`RouterOS REST API request failed: ${(lastError as Error)?.message || lastError}`);
-    } catch (error) {
-      throw new Error(`RouterOS connection failed: ${(error as Error).message}`);
+  public disconnect() {
+    if (this.conn) {
+      this.conn.close();
+      this.conn = null;
+      this.log("Disconnected.");
     }
   }
 }
 
-serve(async (req) => {
-  // Handle CORS preflight requests
+
+// Server utama yang menangani request dari frontend
+serve(async (req: Request) => {
+  // Handle preflight request for CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    if (req.method !== 'POST') {
-      return new Response(
-        JSON.stringify({ error: 'Method not allowed' }),
-        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const { host, username, password } = await req.json();
+
+    if (!host || !username) {
+      throw new Error("Host and username are required.");
     }
 
-    const { host, username, password }: MikroTikCredentials = await req.json();
+    const api = new RouterOSAPI();
+    const isConnected = await api.connect(host, username, password || '');
 
-    if (!host || !username || !password) {
-      return new Response(
-        JSON.stringify({ error: 'Missing credentials. Host, username, and password are required.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!isConnected) {
+      throw new Error("Failed to connect to the MikroTik router. Check credentials and network access.");
     }
 
-    // Connect to RouterOS API
-    const routerAPI = new RouterOSAPI(host, username, password);
-    const netwatchData = await routerAPI.connect();
+    const netwatchData = await api.comm('/tool/netwatch/print');
+    api.disconnect();
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        data: netwatchData,
-        host: host,
-        timestamp: new Date().toISOString()
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ success: true, data: netwatchData }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    });
 
   } catch (error) {
-    console.error('Error in netwatch function:', error);
-    
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message || 'Failed to fetch netwatch data' 
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    return new Response(JSON.stringify({ success: false, error: error.message }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    });
   }
-})
+});
