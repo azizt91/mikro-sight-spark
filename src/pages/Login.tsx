@@ -17,13 +17,28 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    
+    try {
+      setIsLoading(true);
+      
+      if (!host || !username || !password) {
+        throw new Error("Please fill in all fields");
+      }
+      
+      // Test connection to MikroTik via Supabase Edge Function
+      const response = await fetch('https://jsqwcnzytqosslsxtyvk.supabase.co/functions/v1/netwatch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpzcXdjbnp5dHFvc3Nsc3h0eXZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0Nzc4OTUsImV4cCI6MjA3MzA1Mzg5NX0.rZ01hkYLBu1DAK8V3j5r7V2R6tcfQqwr4x6yRvOefxI`
+        },
+        body: JSON.stringify({ host, username, password })
+      });
 
-    // Simulate MikroTik connection - in real app, this would call your Node.js backend
-    // Backend will attempt to connect to MikroTik with these credentials
-    setTimeout(() => {
-      if (host && username && password) {
-        // Store MikroTik credentials for API calls
+      const result = await response.json();
+
+      if (result.success) {
+        // Store credentials for dashboard to use
         const credentials = { host, username, password };
         localStorage.setItem("mikrotikCredentials", JSON.stringify(credentials));
         localStorage.setItem("isAuthenticated", "true");
@@ -32,16 +47,21 @@ const Login = () => {
           title: "MikroTik Connected",
           description: `Successfully connected to ${host}`,
         });
+        
         navigate("/dashboard");
       } else {
-        toast({
-          title: "Connection Failed",
-          description: "Please fill in all MikroTik connection details",
-          variant: "destructive",
-        });
+        throw new Error(result.error || "Failed to authenticate with MikroTik router");
       }
+    } catch (error) {
+      console.error('Login error:', error);
+      toast({
+        title: "Connection Failed",
+        description: error.message || "Failed to connect to MikroTik router",
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   return (

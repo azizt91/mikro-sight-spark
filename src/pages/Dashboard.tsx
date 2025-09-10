@@ -23,34 +23,60 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Mock data - in real app, this would come from your Node.js backend
-  const mockData: NetwatchEntry[] = [
-    { id: "1", name: "Gateway Router", host: "192.168.1.1", status: "up", since: "2024-01-15 08:30" },
-    { id: "2", name: "Core Switch", host: "192.168.1.10", status: "up", since: "2024-01-15 08:30" },
-    { id: "3", name: "WiFi Access Point", host: "192.168.1.20", status: "down", since: "2024-01-15 14:22" },
-    { id: "4", name: "Server Rack", host: "192.168.1.100", status: "up", since: "2024-01-15 08:30" },
-    { id: "5", name: "Backup Router", host: "192.168.1.2", status: "up", since: "2024-01-15 08:30" },
-    { id: "6", name: "Edge Firewall", host: "192.168.1.254", status: "down", since: "2024-01-15 15:45" },
-  ];
 
   const fetchNetworkData = async () => {
     setIsRefreshing(true);
     
-    // Get MikroTik credentials from localStorage
-    const credentials = localStorage.getItem("mikrotikCredentials");
-    
-    // Simulate API call to Node.js backend with MikroTik credentials
-    setTimeout(() => {
-      // In real app: 
-      // const response = await fetch('/api/netwatch', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: credentials
-      // });
-      setNetwatchData(mockData);
+    try {
+      // Get MikroTik credentials from localStorage
+      const credentialsStr = localStorage.getItem("mikrotikCredentials");
+      if (!credentialsStr) {
+        throw new Error("No MikroTik credentials found");
+      }
+
+      const credentials = JSON.parse(credentialsStr);
+      
+      // Call Supabase Edge Function
+      const response = await fetch('https://jsqwcnzytqosslsxtyvk.supabase.co/functions/v1/netwatch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpzcXdjbnp5dHFvc3Nsc3h0eXZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0Nzc4OTUsImV4cCI6MjA3MzA1Mzg5NX0.rZ01hkYLBu1DAK8V3j5r7V2R6tcfQqwr4x6yRvOefxI`
+        },
+        body: JSON.stringify({
+          host: credentials.host,
+          username: credentials.username,
+          password: credentials.password
+        })
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch netwatch data');
+      }
+
+      setNetwatchData(result.data);
       setLastUpdate(new Date());
+      
+      toast({
+        title: "Data Updated",
+        description: `Successfully fetched data from ${credentials.host}`,
+      });
+
+    } catch (error) {
+      console.error('Error fetching network data:', error);
+      toast({
+        title: "Connection Error",
+        description: error.message || "Failed to fetch network data",
+        variant: "destructive",
+      });
+      
+      // Fallback to empty data on error
+      setNetwatchData([]);
+    } finally {
       setIsRefreshing(false);
-    }, 1000);
+    }
   };
 
   useEffect(() => {
