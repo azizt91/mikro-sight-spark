@@ -6,10 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, Network } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
+import { supabase } from "@/integrations/supabase/client";
 const Login = () => {
-  const [host, setHost] = useState("192.168.1.1");
-  const [username, setUsername] = useState("admin");
+  const [host, setHost] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
@@ -26,16 +26,12 @@ const Login = () => {
       }
       
       // Test connection to MikroTik via Supabase Edge Function
-      const response = await fetch('https://jsqwcnzytqosslsxtyvk.supabase.co/functions/v1/netwatch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpzcXdjbnp5dHFvc3Nsc3h0eXZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0Nzc4OTUsImV4cCI6MjA3MzA1Mzg5NX0.rZ01hkYLBu1DAK8V3j5r7V2R6tcfQqwr4x6yRvOefxI`
-        },
-        body: JSON.stringify({ host, username, password })
+      const { data, error } = await supabase.functions.invoke('netwatch', {
+        body: { host, username, password }
       });
 
-      const result = await response.json();
+      if (error) throw error;
+      const result = data as any;
 
       if (result.success) {
         // Store credentials for dashboard to use
@@ -146,8 +142,8 @@ const Login = () => {
 
         {/* Connection Info */}
         <div className="text-center text-sm text-muted-foreground space-y-1">
-          <p>Enter your MikroTik router connection details</p>
-          <p className="text-xs">Credentials will be sent to your Node.js backend for RouterOS API connection</p>
+          <p>Masukkan detail koneksi MikroTik Anda</p>
+          <p className="text-xs">Kredensial dikirim ke Supabase Edge Function untuk koneksi RouterOS</p>
         </div>
       </div>
     </div>

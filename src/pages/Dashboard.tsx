@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { LogOut, Search, RefreshCw, Network, Activity, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
+import { supabase } from "@/integrations/supabase/client";
 interface NetwatchEntry {
   id: string;
   name: string;
@@ -37,20 +37,15 @@ const Dashboard = () => {
       const credentials = JSON.parse(credentialsStr);
       
       // Call Supabase Edge Function
-      const response = await fetch('https://jsqwcnzytqosslsxtyvk.supabase.co/functions/v1/netwatch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpzcXdjbnp5dHFvc3Nsc3h0eXZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0Nzc4OTUsImV4cCI6MjA3MzA1Mzg5NX0.rZ01hkYLBu1DAK8V3j5r7V2R6tcfQqwr4x6yRvOefxI`
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('netwatch', {
+        body: {
           host: credentials.host,
           username: credentials.username,
           password: credentials.password
-        })
+        }
       });
 
-      const result = await response.json();
+      const result = data as any;
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch netwatch data');
